@@ -347,7 +347,66 @@ int lept_parse(lept_value* v, const char* json) {
 }
 
 static void lept_stringify_string(lept_context* c, const char* s, size_t len) {
-    /* ... */
+    static const char hex_digits[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
+    size_t i, size;
+    char* head, *p;
+    assert(s != NULL);
+    p = head = lept_context_push(c, size = len * 6 + 2); /* "\u00xx..." */
+    *p++ = '"';
+    for (i = 0; i < len; i++) {
+        unsigned char ch = (unsigned char)s[i];
+        switch (ch) {
+            case '\"': *p++ = '\\'; *p++ = '\"'; break;
+            case '\\': *p++ = '\\'; *p++ = '\\'; break;
+            case '\b': *p++ = '\\'; *p++ = 'b';  break;
+            case '\f': *p++ = '\\'; *p++ = 'f';  break;
+            case '\n': *p++ = '\\'; *p++ = 'n';  break;
+            case '\r': *p++ = '\\'; *p++ = 'r';  break;
+            case '\t': *p++ = '\\'; *p++ = 't';  break;
+            default:
+                if (ch < 0x20) {
+                    *p++ = '\\'; *p++ = 'u'; *p++ = '0'; *p++ = '0';
+                    *p++ = hex_digits[ch >> 4];
+                    *p++ = hex_digits[ch & 15];
+                }
+                else
+                    *p++ = s[i];
+        }
+    }
+    *p++ = '"';
+    c->top -= size - (p - head);
+}
+
+static void lept_stringify_value(lept_context* c, const lept_value* v);
+
+static void lept_stringify_array(lept_context* c, const lept_value* v) {
+    size_t i;
+    PUTS(c, "[",  1);
+    for (i = 0; i < v->u.a.size; i++)
+    {
+        if (i > 0)
+        {
+            PUTS(c, ",",  1);
+        }
+        lept_stringify_value(c, &v->u.a.e[i]);
+    }
+    PUTS(c, "]",  1);
+}
+
+static void lept_stringify_object(lept_context* c, const lept_value* v) {
+    size_t i;
+    PUTS(c, "{",  1);
+    for (i = 0; i < v->u.o.size; i++)
+    {
+        if (i > 0)
+        {
+            PUTS(c, ",",  1);
+        }
+        lept_stringify_string(c, v->u.o.m[i].k, v->u.o.m[i].klen);
+        PUTS(c, ":",  1);
+        lept_stringify_value(c, &v->u.o.m[i].v);
+    }
+    PUTS(c, "}",  1);
 }
 
 static void lept_stringify_value(lept_context* c, const lept_value* v) {
@@ -358,10 +417,10 @@ static void lept_stringify_value(lept_context* c, const lept_value* v) {
         case LEPT_NUMBER: c->top -= 32 - sprintf(lept_context_push(c, 32), "%.17g", v->u.n); break;
         case LEPT_STRING: lept_stringify_string(c, v->u.s.s, v->u.s.len); break;
         case LEPT_ARRAY:
-            /* ... */
+            lept_stringify_array(c, v);
             break;
         case LEPT_OBJECT:
-            /* ... */
+            lept_stringify_object(c, v);
             break;
         default: assert(0 && "invalid type");
     }
